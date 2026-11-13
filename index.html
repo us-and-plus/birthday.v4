@@ -1,0 +1,1933 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Happy Birthday</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #151522;
+        color: white;
+        font-family: sans-serif;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .wrapper {
+        max-width: 1200px;
+        width: 100%;
+      }
+
+      h1 {
+        text-align: center;
+        color: #ffd36a;
+        margin: 0 0 5px;
+      }
+
+      .subtitle {
+        text-align: center;
+        color: #b9b8d0;
+        margin-bottom: 22px;
+      }
+
+      .layout {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .game-box {
+        max-width: 100%;
+        background: #25253a;
+        padding: 12px;
+        border-radius: 14px;
+        box-shadow: 0 8px 30px #0008;
+      }
+
+      canvas {
+        display: block;
+        width: 800px;
+        max-width: 100%;
+        height: auto;
+        border-radius: 7px;
+        background: #72c9ef;
+      }
+
+      .sidebar {
+        width: 270px;
+        background: #25253a;
+        border-radius: 14px;
+        padding: 18px;
+        box-shadow: 0 8px 30px #0008;
+      }
+
+      .sidebar h2 {
+        font-size: 19px;
+        color: #ffd36a;
+        margin-top: 0;
+      }
+
+      .sidebar h3 {
+        font-size: 14px;
+        color: #ffd36a;
+        margin: 18px 0 8px;
+      }
+
+      .item {
+        padding: 10px 8px;
+        border-bottom: 1px solid #41415a;
+        display: flex;
+        gap: 9px;
+        align-items: center;
+        font-size: 14px;
+      }
+
+      .item .tick {
+        width: 20px;
+        color: #70ed9a;
+        font-weight: bold;
+      }
+
+      .item.done {
+        text-decoration: line-through;
+        color: #8dce9e;
+      }
+
+      .progress {
+        height: 9px;
+        background: #41415a;
+        border-radius: 10px;
+        margin: 15px 0;
+        overflow: hidden;
+      }
+
+      .progress div {
+        height: 100%;
+        width: 0;
+        background: #70ed9a;
+        transition: width 0.2s;
+      }
+
+      .stats {
+        color: #f5d58a;
+        font-size: 13px;
+        line-height: 1.8;
+      }
+
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+      <h1>HAPPY BIRTHDAY CHAPPUA JI!</h1>
+      <div class="subtitle">
+        Let's go places... for the yummy Milk Cake.
+      </div>
+      <div class="layout">
+        <div class="game-box">
+          <canvas id="game" width="800" height="450" aria-label="Happy Birthday"></canvas>
+        </div>
+        <aside class="sidebar">
+          <h2>🍰 Milk Cake Ingredients</h2>
+          <div id="items"></div>
+          <div class="progress"><div id="bar"></div></div>
+          <div class="stats">
+            <div>❤️ Lives: <span id="lives">1</span></div>
+            <div>⭐ Ingredients: <span id="count">0</span>/<span id="total">6</span></div>
+            <div>📍 Location: <span id="location">Birthday Quest</span></div>
+            <div id="test-mode" hidden>Invincible (testing)</div>
+          </div>
+          <h3>Optional extras</h3>
+          <div id="extras"></div>
+          <div id="bonus" class="stats" hidden>👑 Golden Birthday Crown</div>
+        </aside>
+      </div>
+    </div>
+
+    <script>
+      "use strict";
+
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const W = canvas.width;
+      const H = canvas.height;
+      const WORLD = 6100;
+      const GROUND = 405;
+      const FINISH_X = 5750;
+      const CAVE_START = 4200;
+      const CAVE_END = 5500;
+      const SPEED = 4.2;
+      const GRAVITY = 0.58;
+      const JUMP_SPEED = -12.5;
+      const STEP_MS = 1000 / 60;
+      const CRUMBLE_DELAY = 65;
+      const PLATFORM_RESPAWN = 240;
+      const INVINCIBLE = new URLSearchParams(window.location.search).get("invincible") === "1";
+      const lavaPits = [
+        { x: 4380, y: GROUND + 8, w: 160, h: H - GROUND },
+        { x: 4770, y: GROUND + 8, w: 160, h: H - GROUND },
+        { x: 5150, y: GROUND + 8, w: 160, h: H - GROUND },
+      ];
+      const $ = (id) => document.getElementById(id);
+      const keys = new Set();
+      const themes = [
+        {
+          start: 0, end: 900, name: "Café Rooftops",
+          sky: "#75c9ed", horizon: "#f7e0b0",
+          brick: "#354f6b", mortar: "#172d43", scenery: "#a9bdca",
+        },
+        {
+          start: 900, end: 1800, name: "Sugar Factory",
+          sky: "#aca3d8", horizon: "#f7d8ec",
+          brick: "#bf88aa", mortar: "#755270", scenery: "#8f7aab",
+        },
+        {
+          start: 1800, end: 2800, name: "Waffle Gardens",
+          sky: "#91d5ba", horizon: "#fff1bd",
+          brick: "#d8a154", mortar: "#94612e", scenery: "#73ab75",
+        },
+        {
+          start: 2800, end: CAVE_START, name: "Birthday Skyline",
+          sky: "#787ebc", horizon: "#f4bbac",
+          brick: "#ac799d", mortar: "#62455f", scenery: "#71658e",
+        },
+        {
+          start: CAVE_START, end: CAVE_END, name: "Chocolate Caverns",
+          sky: "#201d35", horizon: "#715048",
+          brick: "#805844", mortar: "#392b35", scenery: "#443345",
+          cave: true,
+        },
+        {
+          start: CAVE_END, end: WORLD, name: "Birthday Terrace",
+          sky: "#787ebc", horizon: "#f4bbac",
+          brick: "#ac799d", mortar: "#62455f", scenery: "#71658e",
+        },
+      ];
+      const ingredients = [
+        ["🥛", "Fresh Milk", "Brews & Spoons"],
+        ["🍬", "Sweet Sugar", "Big Chill"],
+        ["🧈", "Pure Ghee", "BlinkIt"],
+        ["🍋", "Lemon Juice", "Unaav"],
+        ["🌿", "Cardamom Powder", "Karigari"],
+        ["🥜", "Chopped Nuts", "Belgian Waffle"],
+        ["☕", "Secret Item 1", "Piyush's Coffee"],
+        ["💌", "Secret Item 2", "Birthday Card"],
+      ];
+      const cakeBatches = [[0, 1], [2, 3], [4, 5]];
+      const requiredIngredientIds = cakeBatches.flat();
+      const poemLines = [
+        "Chulbuli si, ghuli-mili si Chappua Ji,",
+        "Phooli-phali aur khili khili Chappua Ji.",
+        "Jab mili mere dil me basi Chappua Ji,",
+        "Dekh mujhe jab dekh hasi Chappua Ji.",
+        "Sath khadi aur sath chali Chappua Ji,",
+        "Ek din fir meri bani Chappua Ji.",
+        "Mere sang yahin, har kahin Chappua Ji,",
+        "Aaj abhi aur kal bhi wahi Chappua Ji.",
+        "Chulbuli si, ghuli-mili si Chappua Ji,",
+        "Phooli-phali aur khili khili Chappua Ji.",
+      ];
+      const endingTitles = [
+        "BIRTHDAY ROAD TRIP COMPLETE",
+        "THE COFFEEHOUSE CELEBRATION",
+        "A BIRTHDAY SEALED WITH LOVE",
+        "COFFEE, CAKE & BIRTHDAY WISHES",
+        "A ROYAL BIRTHDAY",
+        "THE ROYAL COFFEE PARTY",
+        "A ROYAL BIRTHDAY WISH",
+        "THE GRAND BIRTHDAY CELEBRATION",
+      ];
+
+      let player;
+      let enemies;
+      let platforms;
+      let roomPlatforms;
+      let treasurePlatforms;
+      let collectibles;
+      let particles;
+      let secretPipe;
+      let hiddenBrick;
+      let cavernSwitch;
+      let secretWall;
+      let cavernPipe;
+      let treasureClaimed = false;
+      let finale = null;
+      let poem = null;
+      let celebration = null;
+      let cakeReady = false;
+      let gameTick = 0;
+      let camera = 0;
+      let state = "playing";
+      let collected = new Set();
+      let secretRoom = false;
+      let endingTimer = 0;
+      let smoke = [];
+      let bannerY = 460;
+      let lastTime = null;
+      let accumulator = 0;
+
+      const itemRows = ingredients.map(([icon, name], i) => {
+        const row = document.createElement("div");
+        row.className = "item";
+        row.innerHTML = `<span class="tick">○</span><span>${icon} ${name}</span>`;
+        const container = requiredIngredientIds.includes(i) ? $("items") : $("extras");
+        container.appendChild(row);
+        return { row, tick: row.querySelector(".tick") };
+      });
+
+      function makeLevel() {
+        player = {
+          x: 70, y: 300, w: 27, h: 38,
+          vx: 0, vy: 0, grounded: false, support: null, facing: 1,
+          safeX: 70, safeY: 300,
+        };
+        camera = 0;
+        collected = new Set();
+        state = "playing";
+        secretRoom = false;
+        treasureClaimed = false;
+        endingTimer = 0;
+        bannerY = 460;
+        smoke = [];
+        particles = [];
+        finale = null;
+        poem = null;
+        celebration = null;
+        cakeReady = false;
+        gameTick = 0;
+        keys.clear();
+
+        platforms = [];
+        let floorStart = 0;
+        for (const pit of lavaPits) {
+          platforms.push(makePlatform(floorStart, GROUND, pit.x - floorStart, 45, {
+            ground: true,
+          }));
+          floorStart = pit.x + pit.w;
+          platforms.push(
+            makePlatform(pit.x, GROUND, pit.w / 2, 18, { kind: "crumble" }),
+            makePlatform(pit.x + pit.w / 2, GROUND, pit.w / 2, 18, { kind: "crumble" }),
+          );
+        }
+        platforms.push(makePlatform(floorStart, GROUND, WORLD - floorStart, 45, {
+          ground: true,
+        }));
+        const elevated = [
+          [320, 340, 90], [490, 320, 150], [700, 270, 120],
+          [990, 340, 130], [1120, 290, 150],
+          [1450, 325, 150], [1600, 270, 120],
+          [1900, 330, 160], [2100, 280, 130],
+          [2410, 325, 160], [2580, 265, 120],
+          [2910, 325, 150], [3150, 280, 160],
+          [3420, 320, 150], [3650, 275, 130],
+        ];
+        const ledges = elevated.map(([x, y, w], index) => {
+          const options = {};
+          if ([1, 4, 8, 11].includes(index)) options.kind = "crumble";
+          if ([2, 6, 10, 12].includes(index)) {
+            options.kind = "moving";
+            options.axis = index === 6 ? "y" : "x";
+            options.amplitude = index === 6 ? 20 : 28;
+          }
+          return makePlatform(x, y, w, 18, options);
+        });
+        platforms.push(...ledges);
+        secretPipe = makePlatform(3240, GROUND - 38, 55, 38, { pipe: true });
+        hiddenBrick = makePlatform(3678, 185, 40, 22, { opened: false });
+        platforms.push(secretPipe, hiddenBrick);
+        platforms.push(
+          makePlatform(4220, 330, 110, 18),
+          makePlatform(4400, 275, 100, 18, {
+            kind: "moving", axis: "y", amplitude: 20,
+          }),
+          makePlatform(4620, 320, 120, 18, { kind: "crumble" }),
+          makePlatform(4810, 260, 110, 18, {
+            kind: "moving", axis: "x", amplitude: 30,
+          }),
+          makePlatform(5040, 325, 120, 18),
+          makePlatform(5190, 330, 170, 18),
+          makePlatform(5400, 335, 120, 18),
+        );
+        cavernSwitch = makePlatform(4664, 205, 40, 24, { opened: false });
+        secretWall = makePlatform(5210, 254, 50, 28, {
+          broken: false,
+        });
+        cavernPipe = makePlatform(5290, 282, 50, 48, {
+          pipe: true, active: false,
+        });
+        platforms.push(cavernSwitch, secretWall, cavernPipe);
+
+        roomPlatforms = [
+          makePlatform(0, 355, W, 95, { ground: true }),
+          makePlatform(170, 295, 100, 18),
+          makePlatform(320, 235, 85, 18, { kind: "crumble" }),
+          makePlatform(470, 175, 90, 18),
+          makePlatform(625, 245, 90, 18),
+        ];
+        treasurePlatforms = [
+          makePlatform(0, 355, W, 95, { ground: true }),
+          makePlatform(140, 295, 100, 18),
+          makePlatform(300, 235, 85, 18, {
+            kind: "moving", axis: "x", amplitude: 24,
+          }),
+          makePlatform(470, 175, 110, 18, { kind: "crumble" }),
+          makePlatform(640, 260, 100, 18),
+        ];
+
+        const positions = [
+          [560, 286], [760, 236], [1195, 256],
+          [1660, 236], [2165, 246], [2640, 231],
+          [520, 141], [3698, 151],
+        ];
+        collectibles = positions.map(([x, y], id) => ({
+          id, x, y,
+          icon: ingredients[id][0],
+          tag: ingredients[id][2],
+          area: id === 6 ? "room" : "world",
+          hidden: id === 7,
+          platform: id < 6 ? ledges[[1, 2, 4, 6, 8, 10][id]] : null,
+        }));
+        for (const item of collectibles) {
+          if (!item.platform) continue;
+          item.offsetX = item.x - item.platform.x;
+          item.offsetY = item.y - item.platform.y;
+        }
+
+        enemies = [
+          makeEnemy("nut", 600, GROUND, 520, 760),
+          makeEnemy("nut", 770, ledges[2].y, 700, 820),
+          makeEnemy("cupcake", 1030, GROUND, 980, 1150),
+          makeEnemy("bee", 1510, 205, 1430, 1750),
+          makeEnemy("cupcake", 1850, GROUND, 1790, 1980),
+          makeEnemy("cupcake", 2190, ledges[8].y, 2100, 2230),
+          makeEnemy("nut", 2650, ledges[10].y, 2580, 2700),
+          makeEnemy("bee", 3000, 210, 2820, 3110),
+          makeEnemy("nut", 3530, GROUND, 3440, 3700),
+          makeEnemy("nut", 4280, GROUND, 4210, 4380),
+          makeEnemy("bee", 4490, 215, 4350, 4570),
+          makeEnemy("cupcake", 4650, GROUND, 4550, 4760),
+          makeEnemy("bee", 4890, 180, 4790, 5050),
+          makeEnemy("nut", 5070, 325, 5040, 5160),
+          makeEnemy("cupcake", 5420, GROUND, 5320, 5500),
+        ];
+        updateUI();
+      }
+
+      function makePlatform(x, y, w, h, options = {}) {
+        return {
+          x, y, w, h, baseX: x, baseY: y, previousX: x, previousY: y,
+          dx: 0, dy: 0, phase: 0, active: true, kind: "static",
+          breakTimer: 0, restoreTimer: 0, ...options,
+        };
+      }
+
+      function makeEnemy(type, x, floor, min, max) {
+        const h = type === "bee" ? 24 : 30;
+        return {
+          type, x, y: floor - h, w: 30, h,
+          baseY: floor - h, previousY: floor - h,
+          min, max, dir: 1, alive: true,
+          vx: 0, vy: 0, grounded: false, support: null,
+          hopTimer: 80, rotation: 0,
+        };
+      }
+
+      function currentTheme(x = player.x) {
+        return themes.find((theme) => x >= theme.start && x < theme.end)
+          || themes[themes.length - 1];
+      }
+
+      function requiredIngredientCount() {
+        return requiredIngredientIds.filter((id) => collected.has(id)).length;
+      }
+
+      function updateUI() {
+        itemRows.forEach(({ row, tick }, id) => {
+          const done = collected.has(id);
+          row.classList.toggle("done", done);
+          tick.textContent = done ? "✓" : "○";
+        });
+        const requiredCount = requiredIngredientCount();
+        $("count").textContent = requiredCount;
+        $("total").textContent = requiredIngredientIds.length;
+        $("bar").style.width = `${(requiredCount / requiredIngredientIds.length) * 100}%`;
+        $("lives").textContent = state === "dead" ? "0" : "1";
+        $("test-mode").hidden = !INVINCIBLE;
+        $("bonus").hidden = !treasureClaimed;
+        $("location").textContent = state === "ending" && cakeReady
+          ? "Birthday Room"
+          : poem ? `Poem Road · ${Math.min(poem.completed + 1, poemLines.length)}/${poemLines.length}`
+          : finale
+          ? `Cake Kitchen · ${finale.delivered}/${cakeBatches.length} batches`
+          : secretRoom === "treasure" ? "Golden Treasure Chamber"
+            : secretRoom ? "Secret Coffee Room"
+            : `${currentTheme().name} · ${Math.floor(player.x / 100)}m`;
+      }
+
+      function rect(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x
+          && a.y < b.y + b.h && a.y + a.h > b.y;
+      }
+
+      function jump() {
+        if ((state === "playing" || state === "finale") && player.grounded) {
+          player.vy = JUMP_SPEED;
+          player.grounded = false;
+          player.support = null;
+        }
+      }
+
+      function enterSecret() {
+        if (secretRoom || state !== "playing" || !player.grounded) return;
+        const center = player.x + player.w / 2;
+        for (const pipe of [secretPipe, cavernPipe]) {
+          if (!pipe.active) continue;
+          const onPipe = Math.abs(player.y + player.h - pipe.y) < 0.01;
+          if (onPipe && center > pipe.x + 5 && center < pipe.x + pipe.w - 5) {
+            secretRoom = pipe === secretPipe ? "coffee" : "treasure";
+            moveTo(65, 355 - player.h);
+            return;
+          }
+        }
+      }
+
+      function moveTo(x, y) {
+        player.x = x;
+        player.y = y;
+        player.safeX = x;
+        player.safeY = y;
+        player.vx = 0;
+        player.vy = 0;
+        player.grounded = false;
+        player.support = null;
+        particles = [];
+        camera = secretRoom || finale || poem ? 0
+          : Math.max(0, Math.min(WORLD - W, x - 300));
+        updateUI();
+      }
+
+      function collect(item) {
+        if (collected.has(item.id)) return;
+        collected.add(item.id);
+        for (let i = 0; i < 16; i++) {
+          particles.push({
+            x: item.x, y: item.y,
+            vx: (Math.random() - 0.5) * 5,
+            vy: -Math.random() * 5,
+            life: 40,
+          });
+        }
+        updateUI();
+      }
+
+      function revealSecret(brick) {
+        if (brick === cavernSwitch && !brick.opened) {
+          brick.opened = true;
+          burst(brick.x + brick.w / 2, brick.y, "#a6ffe3");
+          return;
+        }
+        if (brick === secretWall && cavernSwitch.opened && !brick.broken) {
+          brick.broken = true;
+          brick.active = false;
+          cavernPipe.active = true;
+          burst(brick.x + brick.w / 2, brick.y, "#e5b47a");
+          return;
+        }
+        if (brick !== hiddenBrick || brick.opened) return;
+        brick.opened = true;
+        collectibles.find((item) => item.id === 7).hidden = false;
+      }
+
+      function burst(x, y, color) {
+        for (let i = 0; i < 20; i++) {
+          particles.push({
+            x, y, vx: (Math.random() - 0.5) * 6,
+            vy: -Math.random() * 5, life: 40, color,
+          });
+        }
+      }
+
+      function touchesLava(actor) {
+        return lavaPits.some((pit) => rect(actor, pit));
+      }
+
+      function updatePlatforms(solids, actors) {
+        for (const block of solids) {
+          block.previousX = block.x;
+          block.previousY = block.y;
+          block.dx = 0;
+          block.dy = 0;
+          if (!block.active) {
+            if (block.kind !== "crumble") continue;
+            block.restoreTimer--;
+            if (block.restoreTimer <= 0 && !actors.some((actor) => rect(actor, block))) {
+              block.active = true;
+              block.breakTimer = 0;
+            }
+            continue;
+          }
+          if (block.kind === "moving") {
+            block.phase += 0.025;
+            const offset = Math.sin(block.phase) * block.amplitude;
+            block.x = block.baseX + (block.axis === "x" ? offset : 0);
+            block.y = block.baseY + (block.axis === "y" ? offset : 0);
+            block.dx = block.x - block.previousX;
+            block.dy = block.y - block.previousY;
+          } else if (block.kind === "crumble" && block.breakTimer > 0) {
+            block.breakTimer--;
+            if (block.breakTimer === 0) {
+              block.active = false;
+              block.restoreTimer = PLATFORM_RESPAWN;
+            }
+          }
+        }
+      }
+
+      function carryActor(actor, solids) {
+        const support = actor.support;
+        if (support && support.active && actor.grounded) {
+          actor.x += support.dx;
+          actor.y += support.dy;
+        }
+        for (const block of solids) {
+          if (!block.active || (!block.dx && !block.dy) || !rect(actor, block)) continue;
+          // A moving solid pushes non-riders out along the face that reached them.
+          if (actor.y + actor.h <= block.previousY + 0.01) {
+            actor.y = block.y - actor.h;
+            actor.vy = Math.min(0, actor.vy);
+          } else if (actor.y >= block.previousY + block.h - 0.01) {
+            actor.y = block.y + block.h;
+            actor.vy = Math.max(0, actor.vy);
+          } else if (actor.x + actor.w <= block.previousX + 0.01) {
+            actor.x = block.x - actor.w;
+          } else if (actor.x >= block.previousX + block.w - 0.01) {
+            actor.x = block.x + block.w;
+          }
+        }
+      }
+
+      function moveActor(actor, solids, width) {
+        const previousY = actor.y;
+        carryActor(actor, solids);
+        const oldX = actor.x;
+        const oldY = actor.y;
+        actor.x = Math.max(0, Math.min(width - actor.w, actor.x + actor.vx));
+        let hitWall = false;
+
+        // Sweep each axis from its previous position, so thin bricks cannot be skipped.
+        for (const block of solids) {
+          if (!block.active || actor.y + actor.h <= block.y
+            || actor.y >= block.y + block.h) continue;
+          if (actor.vx > 0 && oldX + actor.w <= block.x && actor.x + actor.w > block.x) {
+            actor.x = block.x - actor.w;
+            hitWall = true;
+          } else if (actor.vx < 0 && oldX >= block.x + block.w
+            && actor.x < block.x + block.w) {
+            actor.x = block.x + block.w;
+            hitWall = true;
+          }
+        }
+
+        actor.vy += GRAVITY;
+        const velocityY = actor.vy;
+        let nextY = actor.y + velocityY;
+        let hitCeiling = null;
+        actor.grounded = false;
+        actor.support = null;
+
+        for (const block of solids) {
+          if (!block.active || actor.x + actor.w <= block.x
+            || actor.x >= block.x + block.w) continue;
+          if (velocityY >= 0 && oldY + actor.h <= block.y + 0.01
+            && nextY + actor.h >= block.y) {
+            nextY = block.y - actor.h;
+            actor.vy = 0;
+            actor.grounded = true;
+            actor.support = block;
+          } else if (velocityY < 0 && oldY >= block.y + block.h
+            && nextY <= block.y + block.h) {
+            nextY = block.y + block.h;
+            actor.vy = 0;
+            hitCeiling = block;
+          }
+        }
+        actor.y = nextY;
+        if (actor.support && actor.support.kind === "crumble"
+          && actor.support.breakTimer === 0) {
+          actor.support.breakTimer = CRUMBLE_DELAY;
+        }
+        if (INVINCIBLE && actor === player && actor.grounded && actor.support.ground
+          && actor.x >= actor.support.x
+          && actor.x + actor.w <= actor.support.x + actor.support.w) {
+          actor.safeX = actor.x;
+          actor.safeY = actor.y;
+        }
+        if (actor === player && hitCeiling) revealSecret(hitCeiling);
+        return { oldY: previousY, velocityY, hitWall };
+      }
+
+      function updateEnemies() {
+        for (const enemy of enemies) {
+          if (!enemy.alive) continue;
+          enemy.previousY = enemy.y;
+          if (enemy.type === "bee") {
+            enemy.x += enemy.dir * 1.65;
+            if (enemy.x < enemy.min || enemy.x + enemy.w > enemy.max) {
+              enemy.x = Math.max(enemy.min, Math.min(enemy.max - enemy.w, enemy.x));
+              enemy.dir *= -1;
+            }
+            enemy.y = enemy.baseY + Math.sin(gameTick * 0.045 + enemy.min) * 26;
+            enemy.vy = enemy.y - enemy.previousY;
+            continue;
+          }
+
+          if (enemy.type === "cupcake") {
+            enemy.hopTimer--;
+            if (enemy.grounded && enemy.hopTimer <= 0) {
+              enemy.vy = -7.5;
+              enemy.grounded = false;
+              enemy.support = null;
+              enemy.hopTimer = 100;
+            }
+          }
+          const support = enemy.support && enemy.support.active ? enemy.support : null;
+          const min = support && !support.ground ? support.x + 3 : enemy.min;
+          const max = support && !support.ground
+            ? support.x + support.w - enemy.w - 3 : enemy.max - enemy.w;
+          const speed = enemy.type === "nut" ? 1.8 : 1;
+          enemy.vx = enemy.dir * speed;
+          const { hitWall } = moveActor(enemy, platforms, WORLD);
+          if (hitWall || enemy.x <= min || enemy.x >= max) {
+            enemy.dir = enemy.x <= min ? 1 : enemy.x >= max ? -1 : -enemy.dir;
+          }
+          enemy.rotation += enemy.vx / 15;
+          if (enemy.y > H + 40 || touchesLava(enemy)) enemy.alive = false;
+        }
+      }
+
+      function collideWithEnemies(oldY, velocityY) {
+        for (const enemy of enemies) {
+          if (!enemy.alive) continue;
+          const horizontalOverlap = player.x + player.w > enemy.x
+            && player.x < enemy.x + enemy.w;
+          const stomp = velocityY > enemy.vy && oldY + player.h <= enemy.previousY + 1
+            && player.y + player.h >= enemy.y && horizontalOverlap;
+          if (stomp) {
+            enemy.alive = false;
+            player.y = enemy.y - player.h;
+            player.vy = -9;
+            player.grounded = false;
+            player.support = null;
+            return;
+          }
+          if (!INVINCIBLE && rect(player, enemy)) {
+            lose();
+            return;
+          }
+        }
+      }
+
+      function lose() {
+        if (INVINCIBLE) {
+          moveTo(player.safeX, player.safeY);
+          return;
+        }
+        state = "dead";
+        updateUI();
+      }
+
+      function startFinale() {
+        state = "finale";
+        secretRoom = false;
+        finale = {
+          timer: 0,
+          delivered: 0,
+          carrying: false,
+          hazards: [],
+          platforms: [
+            makePlatform(0, GROUND, W, 45, { ground: true }),
+            makePlatform(220, 340, 105, 18, {
+              kind: "moving", axis: "x", amplitude: 24,
+            }),
+            makePlatform(460, 305, 100, 18, { kind: "crumble" }),
+          ],
+        };
+        moveTo(50, GROUND - player.h);
+      }
+
+      function updateFinale() {
+        finale.timer++;
+        updatePlatforms(finale.platforms, [player]);
+        moveActor(player, finale.platforms, W);
+        if (player.y > H + 40) {
+          lose();
+          return;
+        }
+
+        if (finale.timer > 90 && finale.timer % 75 === 0) {
+          const target = Math.random() < 0.65
+            ? player.x + player.w / 2 + player.vx * 10
+            : 150 + Math.random() * 500;
+          const fork = Math.random() < 0.5;
+          finale.hazards.push({
+            x: Math.max(140, Math.min(650, target)),
+            y: -55,
+            w: fork ? 16 : 26,
+            h: 46,
+            vy: 4.2 + finale.delivered * 0.65,
+            warning: 54,
+            type: fork ? "fork" : "spoon",
+          });
+        }
+        for (const hazard of finale.hazards) {
+          if (hazard.warning > 0) {
+            hazard.warning--;
+            continue;
+          }
+          const previousBottom = hazard.y + hazard.h;
+          hazard.y += hazard.vy;
+          hazard.vy += 0.08;
+          const blocked = finale.platforms.some((block) => block.active
+            && hazard.x + hazard.w > block.x && hazard.x < block.x + block.w
+            && previousBottom <= block.y && hazard.y + hazard.h >= block.y);
+          if (!INVINCIBLE && rect(player, hazard)) {
+            lose();
+            return;
+          }
+          if (blocked) hazard.y = H + 61;
+        }
+        finale.hazards = finale.hazards.filter((hazard) => hazard.y < H + 60);
+
+        if (!finale.carrying
+          && rect(player, { x: 54, y: GROUND - 36, w: 60, h: 36 })) {
+          finale.carrying = true;
+        }
+        if (finale.carrying && player.grounded
+          && rect(player, { x: 690, y: GROUND - 45, w: 90, h: 45 })) {
+          finale.delivered++;
+          finale.carrying = false;
+          if (finale.delivered === cakeBatches.length) startPoem();
+        }
+      }
+
+      function startPoem() {
+        state = "poem";
+        finale.hazards = [];
+        ctx.save();
+        const roads = poemLines.map((text, index) => {
+          const road = makePlatform(index % 2 === 0 ? 20 : 80, 92 + index * 90, 700, 32, {
+            poemIndex: index,
+            words: [],
+          });
+          ctx.font = "22px sans-serif";
+          road.fontSize = Math.min(22, 22 * (road.w - 48) / Math.max(1, ctx.measureText(text).width));
+          ctx.font = `${road.fontSize}px sans-serif`;
+          let x = road.x + (road.w - ctx.measureText(text).width) / 2;
+          const space = ctx.measureText(" ").width;
+          road.words = text.split(" ").map((word) => {
+            const width = ctx.measureText(word).width;
+            const entry = { text: word, x, width, lit: false };
+            x += width + space;
+            return entry;
+          });
+          return road;
+        });
+        ctx.restore();
+        const doorway = makePlatform(0, roads[roads.length - 1].y + 68, 100, 20);
+        poem = { roads, doorway, platforms: [...roads, doorway], completed: 0, cameraY: 0 };
+        player.facing = 1;
+        moveTo(35, roads[0].y - player.h);
+      }
+
+      function updatePoem() {
+        const previousSupport = player.support;
+        moveActor(player, poem.platforms, W);
+        if (previousSupport && previousSupport.poemIndex === poem.completed
+          && !player.grounded && player.vy > 0) {
+          poem.completed++;
+          const exitX = previousSupport.poemIndex % 2 === 0
+            ? previousSupport.x + previousSupport.w : previousSupport.x;
+          burst(exitX, previousSupport.y, "#ffe39b");
+        }
+        const road = player.support;
+        if (road && road.words) {
+          for (const word of road.words) {
+            if (!word.lit && player.x + player.w >= word.x
+              && player.x <= word.x + word.width) {
+              word.lit = true;
+              burst(word.x + word.width / 2, road.y, "#a9f3df");
+            }
+          }
+        }
+        if (poem.completed === poemLines.length && player.support === poem.doorway) {
+          win();
+          return;
+        }
+        if (player.y > poem.doorway.y + 60) {
+          const index = Math.min(poem.completed, poemLines.length - 1);
+          const recovery = poem.roads[index];
+          player.facing = index % 2 === 0 ? 1 : -1;
+          moveTo(index % 2 === 0 ? 35 : W - player.w - 15, recovery.y - player.h);
+        }
+        const target = Math.max(0, Math.min(
+          poem.doorway.y + poem.doorway.h - H, player.y - 150,
+        ));
+        poem.cameraY += (target - poem.cameraY) * 0.15;
+      }
+
+      function win() {
+        state = "ending";
+        cakeReady = requiredIngredientCount() === requiredIngredientIds.length
+          && finale !== null && finale.delivered === cakeBatches.length;
+        celebration = cakeReady ? {
+          coffee: collected.has(6),
+          card: collected.has(7),
+          crown: treasureClaimed,
+          confetti: [],
+          sparks: [],
+        } : null;
+        endingTimer = 0;
+        bannerY = 460;
+        smoke = Array.from({ length: 65 }, () => ({
+          x: 400 + Math.random() * 180,
+          y: 350,
+          vx: (Math.random() - 0.5) * 2,
+          vy: -Math.random() * 3 - 1,
+          r: 8 + Math.random() * 17,
+          a: 1,
+        }));
+      }
+
+      function updateCelebration() {
+        if (endingTimer === 190) {
+          celebration.confetti = Array.from({ length: 160 }, () => ({
+            x: Math.random() * W,
+            y: -20 - Math.random() * H,
+            vx: (Math.random() - 0.5) * 2,
+            vy: 1.4 + Math.random() * 1.8,
+            angle: Math.random() * Math.PI * 2,
+            spin: (Math.random() - 0.5) * 0.14,
+            color: ["#ffd875", "#f38cb7", "#83e1d4", "#b9a2ff"][Math.floor(Math.random() * 4)],
+          }));
+        }
+        for (const piece of celebration.confetti) {
+          piece.x += piece.vx;
+          piece.y += piece.vy;
+          piece.angle += piece.spin;
+        }
+        celebration.confetti = celebration.confetti.filter((piece) => piece.y < H + 20);
+
+        if (endingTimer >= 240 && endingTimer % 120 === 0) {
+          const x = 90 + Math.random() * (W - 180);
+          const y = 95 + Math.random() * 80;
+          const color = celebration.crown ? "#ffdd83" : "#c2a8ff";
+          for (let i = 0; i < 36; i++) {
+            const angle = Math.PI * 2 * i / 36;
+            const speed = 1.2 + Math.random() * 1.5;
+            celebration.sparks.push({
+              x, y, vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed, life: 75, color,
+            });
+          }
+        }
+        for (const spark of celebration.sparks) {
+          spark.x += spark.vx;
+          spark.y += spark.vy;
+          spark.vy += 0.025;
+          spark.life--;
+        }
+        celebration.sparks = celebration.sparks.filter((spark) => spark.life > 0);
+      }
+
+      function update() {
+        if (state === "playing" || state === "finale" || state === "poem") {
+          gameTick++;
+          const left = keys.has("arrowleft") || keys.has("a");
+          const right = keys.has("arrowright") || keys.has("d");
+          player.vx = (Number(right) - Number(left)) * SPEED;
+          if (player.vx !== 0) player.facing = Math.sign(player.vx);
+        }
+        if (state === "playing") {
+          const solids = secretRoom === "treasure" ? treasurePlatforms
+            : secretRoom ? roomPlatforms : platforms;
+          const actors = secretRoom ? [player]
+            : [player, ...enemies.filter((enemy) => enemy.alive)];
+          updatePlatforms(solids, actors);
+          if (!secretRoom) updateEnemies();
+          const { oldY, velocityY } = moveActor(player, solids, secretRoom ? W : WORLD);
+          if (player.y > H + 40 || (!secretRoom && touchesLava(player))) {
+            lose();
+            return;
+          }
+
+          if (!secretRoom) {
+            collideWithEnemies(oldY, velocityY);
+            if (state === "dead") return;
+          }
+
+          const area = secretRoom === "treasure" ? "treasure"
+            : secretRoom ? "room" : "world";
+          for (const item of collectibles) {
+            if (item.platform) {
+              item.x = item.platform.x + item.offsetX;
+              item.y = item.platform.y + item.offsetY;
+            }
+            if (item.area === area && !item.hidden && !collected.has(item.id)
+              && rect(player, { x: item.x - 12, y: item.y - 20, w: 24, h: 24 })) {
+              collect(item);
+            }
+          }
+
+          if (secretRoom === "treasure" && !treasureClaimed
+            && rect(player, { x: 510, y: 137, w: 38, h: 38 })) {
+            treasureClaimed = true;
+            burst(529, 145, "#ffe08a");
+            updateUI();
+          }
+          if (secretRoom && player.x > 730) {
+            const fromTreasure = secretRoom === "treasure";
+            secretRoom = false;
+            if (fromTreasure) {
+              moveTo(
+                cavernPipe.x + (cavernPipe.w - player.w) / 2,
+                cavernPipe.y - player.h,
+              );
+            } else {
+              moveTo(3320, GROUND - player.h);
+            }
+          } else if (!secretRoom) {
+            if (player.x > FINISH_X - 120 && player.grounded
+              && player.y + player.h === GROUND) {
+              if (requiredIngredientCount() === requiredIngredientIds.length) {
+                startFinale();
+                return;
+              }
+              win();
+            }
+            const target = Math.max(0, Math.min(WORLD - W, player.x - 300));
+            camera += (target - camera) * 0.15;
+          }
+        } else if (state === "finale") {
+          updateFinale();
+        } else if (state === "poem") {
+          updatePoem();
+        } else if (state === "ending") {
+          endingTimer++;
+          if (celebration) updateCelebration();
+          for (const puff of smoke) {
+            puff.x += puff.vx;
+            puff.y += puff.vy;
+            puff.r += 0.12;
+            puff.a = Math.max(0, 1 - endingTimer / 130);
+          }
+          if (endingTimer > 100) bannerY = Math.max(265, bannerY - 2.7);
+        }
+        for (const particle of particles) {
+          particle.x += particle.vx;
+          particle.y += particle.vy;
+          particle.vy += 0.15;
+          particle.life--;
+        }
+        particles = particles.filter((particle) => particle.life > 0);
+      }
+
+      function background() {
+        const theme = currentTheme();
+        const gradient = ctx.createLinearGradient(0, 0, 0, H);
+        gradient.addColorStop(0, theme.sky);
+        gradient.addColorStop(1, theme.horizon);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, W, H);
+        if (theme.cave) {
+          ctx.fillStyle = "#342c40";
+          for (let i = 0; i < 10; i++) {
+            const x = i * 120 - (camera * 0.2) % 120;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x + 75, 120 + (i % 3) * 35);
+            ctx.lineTo(x + 120, 0);
+            ctx.fill();
+            ctx.fillRect(x + 20, 260 + (i % 2) * 45, 70, 190);
+          }
+          ctx.fillStyle = "#deb98566";
+          for (let i = 0; i < 22; i++) {
+            const x = (i * 127 + Math.sin(gameTick / 100 + i) * 8 - camera * 0.12) % W;
+            const y = 110 + (i * 67) % 240;
+            ctx.fillRect((x + W) % W, y, 2, 2);
+          }
+          ctx.fillStyle = "#fff1d2";
+          ctx.font = "bold 18px sans-serif";
+          ctx.fillText(theme.name, 22, 32);
+          return;
+        }
+        for (let i = 0; i < 10; i++) {
+          const x = ((i * 240 - camera * 0.22) % (W + 180) + W + 180) % (W + 180) - 80;
+          const y = 75 + (i % 3) * 38;
+          ctx.fillStyle = "#ffffffaa";
+          ctx.beginPath();
+          ctx.arc(x, y, 22, 0, Math.PI * 2);
+          ctx.arc(x + 25, y - 10, 30, 0, Math.PI * 2);
+          ctx.arc(x + 55, y + 3, 20, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = theme.scenery;
+        for (let i = 0; i < 30; i++) {
+          const x = i * 160 - camera * 0.45;
+          ctx.beginPath();
+          ctx.arc(x, GROUND + 10, 95, Math.PI, 0);
+          ctx.fill();
+        }
+        ctx.fillStyle = "#ffffffdd";
+        ctx.font = "bold 18px sans-serif";
+        ctx.fillText(theme.name, 22, 32);
+      }
+
+      function drawThemeScenery() {
+        for (const theme of themes) {
+          if (theme.end < camera || theme.start > camera + W) continue;
+          for (let x = theme.start + 65; x < theme.end; x += 240) {
+            if (x + 170 < camera || x > camera + W) continue;
+            if (theme === themes[0]) {
+              ctx.fillStyle = "#dce8ee";
+              ctx.fillRect(x, 290, 155, 115);
+              ctx.fillStyle = "#91a9b8";
+              ctx.fillRect(x + 25, 340, 32, 65);
+              ctx.fillRect(x + 88, 335, 42, 42);
+              for (let stripe = 0; stripe < 6; stripe++) {
+                ctx.fillStyle = stripe % 2 ? "#f5f9fb" : "#b2c7d3";
+                ctx.fillRect(x + stripe * 26, 305, 26, 20);
+              }
+              ctx.font = "28px sans-serif";
+              ctx.fillText("☕", x + 60, 284);
+            } else if (theme === themes[1]) {
+              ctx.fillStyle = "#83769e";
+              ctx.fillRect(x + 20, 260, 130, 145);
+              ctx.fillStyle = "#b8a8ca";
+              ctx.fillRect(x + 35, 205, 24, 55);
+              ctx.fillRect(x + 100, 225, 24, 35);
+              ctx.fillStyle = "#e5bed1";
+              for (let i = 0; i < 3; i++) {
+                ctx.fillRect(x + 35 + i * 36, 285, 22, 34);
+              }
+              ctx.font = "34px sans-serif";
+              ctx.fillText("⚙", x + 65, 367);
+            } else if (theme === themes[2]) {
+              ctx.fillStyle = "#639762";
+              ctx.fillRect(x + 70, 265, 13, 140);
+              ctx.fillStyle = "#dfb16c";
+              ctx.beginPath();
+              ctx.arc(x + 76, 268, 55, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = "#ac783d";
+              ctx.lineWidth = 3;
+              for (let i = -2; i <= 2; i++) {
+                const offset = i * 17;
+                const edge = Math.sqrt(55 * 55 - offset * offset);
+                ctx.beginPath();
+                ctx.moveTo(x + 76 + offset, 268 - edge);
+                ctx.lineTo(x + 76 + offset, 268 + edge);
+                ctx.moveTo(x + 76 - edge, 268 + offset);
+                ctx.lineTo(x + 76 + edge, 268 + offset);
+                ctx.stroke();
+              }
+            } else if (theme.cave) {
+              ctx.fillStyle = "#543c43";
+              ctx.beginPath();
+              ctx.moveTo(x, 0);
+              ctx.lineTo(x + 35, 75);
+              ctx.lineTo(x + 65, 20);
+              ctx.lineTo(x + 105, 110);
+              ctx.lineTo(x + 155, 0);
+              ctx.fill();
+              ctx.fillStyle = "#6b4c4a";
+              ctx.fillRect(x + 20, 355, 135, 50);
+              ctx.strokeStyle = "#98704e";
+              ctx.lineWidth = 2;
+              for (let i = 0; i < 3; i++) {
+                ctx.strokeRect(x + 25 + i * 43, 360, 38, 40);
+              }
+            } else {
+              ctx.fillStyle = "#706080";
+              ctx.fillRect(x, 310, 155, 95);
+              ctx.strokeStyle = "#f3d9af";
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(x, 155);
+              ctx.quadraticCurveTo(x + 80, 195, x + 180, 155);
+              ctx.stroke();
+              for (let i = 0; i < 6; i++) {
+                ctx.fillStyle = ["#f4b670", "#e58dac", "#b3cfa9"][i % 3];
+                ctx.beginPath();
+                ctx.moveTo(x + i * 30, 159 + Math.sin(i / 5 * Math.PI) * 18);
+                ctx.lineTo(x + i * 30 + 18, 163 + Math.sin(i / 5 * Math.PI) * 18);
+                ctx.lineTo(x + i * 30 + 9, 185 + Math.sin(i / 5 * Math.PI) * 18);
+                ctx.fill();
+              }
+              ctx.fillStyle = "#f6d796";
+              ctx.fillRect(x + 25, 333, 20, 28);
+              ctx.fillRect(x + 105, 333, 20, 28);
+            }
+          }
+        }
+      }
+
+      function drawPlatforms(solids) {
+        for (const block of solids) {
+          if (block.x + block.w < camera || block.x > camera + W) continue;
+          const theme = currentTheme(block.x);
+          if (!block.active) {
+            if (block.kind !== "crumble") continue;
+            ctx.strokeStyle = "#ffffff35";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(block.x, block.y, block.w, block.h);
+            continue;
+          }
+          if (block.kind === "moving") {
+            ctx.strokeStyle = "#45546988";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(
+              block.baseX + block.w / 2 - (block.axis === "x" ? block.amplitude : 0),
+              block.baseY + block.h / 2 - (block.axis === "y" ? block.amplitude : 0),
+            );
+            ctx.lineTo(
+              block.baseX + block.w / 2 + (block.axis === "x" ? block.amplitude : 0),
+              block.baseY + block.h / 2 + (block.axis === "y" ? block.amplitude : 0),
+            );
+            ctx.stroke();
+          }
+          ctx.fillStyle = block.pipe ? "#168c4b"
+            : block.kind === "moving" ? "#4c9298"
+              : block.kind === "crumble" ? "#daa865"
+                : block.opened ? "#9e704c"
+                  : secretRoom ? "#79508f" : finale ? "#b77753" : theme.brick;
+          ctx.fillRect(block.x, block.y, block.w, block.h);
+          if (block.pipe) {
+            ctx.fillStyle = "#38c96a";
+            ctx.fillRect(block.x, block.y, block.w, 12);
+          } else {
+            ctx.strokeStyle = secretRoom ? "#49315c" : theme.mortar;
+            ctx.lineWidth = 2;
+            const start = block.x + Math.max(0, Math.floor((camera - block.x) / 27)) * 27;
+            const end = Math.min(block.x + block.w, camera + W);
+            for (let x = start; x < end; x += 27) {
+              const width = Math.min(27, block.x + block.w - x);
+              if (block.ground && !secretRoom && !finale) {
+                ctx.fillStyle = currentTheme(x).brick;
+                ctx.fillRect(x, block.y, width, block.h);
+                ctx.strokeStyle = currentTheme(x).mortar;
+              }
+              ctx.strokeRect(x + 1, block.y + 1, width - 2, block.h - 2);
+              ctx.beginPath();
+              ctx.moveTo(x, block.y + block.h / 2);
+              ctx.lineTo(x + width, block.y + block.h / 2);
+              ctx.stroke();
+            }
+          }
+          if (block.kind === "moving") {
+            ctx.fillStyle = "#a8e9df";
+            ctx.fillRect(block.x + 5, block.y + 4, block.w - 10, 4);
+          } else if (block.kind === "crumble") {
+            ctx.strokeStyle = block.breakTimer > 0 ? "#713b30" : "#af7f49";
+            ctx.lineWidth = block.breakTimer > 0 ? 2 : 1;
+            const cracks = block.breakTimer > 0 ? 5 : 2;
+            for (let i = 0; i < cracks; i++) {
+              const x = block.x + block.w * (i + 1) / (cracks + 1);
+              ctx.beginPath();
+              ctx.moveTo(x, block.y);
+              ctx.lineTo(x - 5, block.y + 8);
+              ctx.lineTo(x + 3, block.y + block.h);
+              ctx.stroke();
+            }
+          }
+          if (!block.ground && !block.pipe) {
+            ctx.strokeStyle = "#172d43";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(block.x + 1, block.y + 1, block.w - 2, block.h - 2);
+            ctx.fillStyle = block.kind === "moving" ? "#a8e9df"
+              : block.kind === "crumble" ? "#ffe0a0" : "#b8d5eb";
+            ctx.fillRect(block.x + 2, block.y + 2, block.w - 4, 2);
+          }
+          if (block === cavernSwitch && block.opened) {
+            ctx.fillStyle = "#234e4b";
+            ctx.fillRect(block.x + 10, block.y + 5, 20, 14);
+            ctx.strokeStyle = "#adffe1";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(block.x + 16, block.y + 16);
+            ctx.lineTo(block.x + 25, block.y + 7);
+            ctx.stroke();
+          } else if (block === secretWall) {
+            ctx.strokeStyle = cavernSwitch.opened ? "#adffe1" : "#b28c65";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(block.x + 18, block.y + 4);
+            ctx.lineTo(block.x + 24, block.y + 13);
+            ctx.lineTo(block.x + 19, block.y + 23);
+            ctx.moveTo(block.x + 24, block.y + 13);
+            ctx.lineTo(block.x + 34, block.y + 10);
+            ctx.stroke();
+          }
+        }
+      }
+
+      function drawCollectibles(area) {
+        ctx.textAlign = "center";
+        for (const item of collectibles) {
+          if (item.area !== area || item.hidden || collected.has(item.id)) continue;
+          ctx.font = "24px sans-serif";
+          ctx.fillText(item.icon, item.x, item.y);
+          ctx.fillStyle = area === "room" ? "#fff0ce" : "#24243a";
+          ctx.font = "bold 12px sans-serif";
+          ctx.fillText(item.tag, item.x, item.y - 28);
+        }
+        ctx.textAlign = "left";
+      }
+
+      function drawPlayer(p = player) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        if (p.facing < 0) {
+          ctx.translate(p.w, 0);
+          ctx.scale(-1, 1);
+        }
+        ctx.fillStyle = "#ed5549";
+        ctx.strokeStyle = "#151e32";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(6, 3);
+        ctx.lineTo(16, 3);
+        ctx.lineTo(23, 18);
+        ctx.lineTo(26, 20);
+        ctx.lineTo(26, 31);
+        ctx.lineTo(1, 31);
+        ctx.lineTo(1, 17);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#bfeaff";
+        ctx.beginPath();
+        ctx.moveTo(7, 6);
+        ctx.lineTo(10, 6);
+        ctx.lineTo(10, 16);
+        ctx.lineTo(4, 16);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(13, 6);
+        ctx.lineTo(15, 6);
+        ctx.lineTo(20, 16);
+        ctx.lineTo(13, 16);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#ffb5a2";
+        ctx.fillRect(3, 19, 18, 2);
+        ctx.fillStyle = "#253247";
+        ctx.fillRect(12, 19, 1, 10);
+        ctx.fillRect(15, 22, 3, 1);
+        ctx.fillStyle = "#fff2ad";
+        ctx.fillRect(23, 23, 3, 4);
+        ctx.fillStyle = "#8c243a";
+        ctx.fillRect(1, 23, 2, 4);
+        ctx.fillStyle = "#d7e3ed";
+        ctx.fillRect(2, 29, 23, 2);
+        for (const x of [6.5, 20.5]) {
+          ctx.fillStyle = "#151e32";
+          ctx.beginPath();
+          ctx.arc(x, 33, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#b8cbd8";
+          ctx.beginPath();
+          ctx.arc(x, 33, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+        if (treasureClaimed) {
+          ctx.fillStyle = "#ffd568";
+          ctx.strokeStyle = "#744b24";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(p.x + 4, p.y + 9);
+          ctx.lineTo(p.x + 3, p.y + 1);
+          ctx.lineTo(p.x + 9, p.y + 5);
+          ctx.lineTo(p.x + 13.5, p.y);
+          ctx.lineTo(p.x + 18, p.y + 5);
+          ctx.lineTo(p.x + 24, p.y + 1);
+          ctx.lineTo(p.x + 23, p.y + 9);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+
+      function drawParticles() {
+        for (const particle of particles) {
+          ctx.fillStyle = particle.color || "#ffe16a";
+          ctx.globalAlpha = particle.life / 40;
+          ctx.fillRect(particle.x, particle.y, 4, 4);
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function drawEnemy(enemy) {
+        if (enemy.type === "bee") {
+          ctx.fillStyle = "#ffffffaa";
+          const wing = Math.sin(gameTick * 0.6) * 5;
+          ctx.beginPath();
+          ctx.ellipse(enemy.x + 9, enemy.y + 2, 8, 6 + wing / 2, -0.5, 0, Math.PI * 2);
+          ctx.ellipse(enemy.x + 22, enemy.y + 2, 8, 6 - wing / 2, 0.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#f3ce50";
+          ctx.beginPath();
+          ctx.ellipse(enemy.x + 15, enemy.y + 13, 15, 11, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#493341";
+          ctx.fillRect(enemy.x + 10, enemy.y + 3, 4, 20);
+          ctx.fillRect(enemy.x + 18, enemy.y + 4, 4, 18);
+        } else if (enemy.type === "nut") {
+          ctx.save();
+          ctx.translate(enemy.x + 15, enemy.y + 15);
+          ctx.rotate(enemy.rotation);
+          ctx.fillStyle = "#a66839";
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 15, 14, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#e2b879";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(-2, -12);
+          ctx.lineTo(3, -3);
+          ctx.lineTo(-3, 6);
+          ctx.lineTo(2, 13);
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          ctx.fillStyle = "#a75881";
+          ctx.fillRect(enemy.x + 3, enemy.y + 12, 24, 18);
+          ctx.fillStyle = "#f6b8ce";
+          ctx.beginPath();
+          ctx.arc(enemy.x + 7, enemy.y + 12, 7, 0, Math.PI * 2);
+          ctx.arc(enemy.x + 15, enemy.y + 8, 8, 0, Math.PI * 2);
+          ctx.arc(enemy.x + 23, enemy.y + 12, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#e65b65";
+          ctx.fillRect(enemy.x + 13, enemy.y, 5, 5);
+        }
+        ctx.fillStyle = "#fff8e9";
+        ctx.fillRect(enemy.x + 5, enemy.y + 12, 7, 7);
+        ctx.fillRect(enemy.x + 19, enemy.y + 12, 7, 7);
+        ctx.fillStyle = "#302435";
+        ctx.fillRect(enemy.x + 8, enemy.y + 14, 3, 4);
+        ctx.fillRect(enemy.x + 20, enemy.y + 14, 3, 4);
+      }
+
+      function drawWorld() {
+        ctx.save();
+        ctx.translate(-camera, 0);
+        drawThemeScenery();
+        drawLava();
+        drawPlatforms(platforms);
+        drawCollectibles("world");
+        for (const enemy of enemies) {
+          if (enemy.alive && enemy.x + enemy.w >= camera && enemy.x <= camera + W) {
+            drawEnemy(enemy);
+          }
+        }
+        ctx.fillStyle = "#d5a53d";
+        ctx.beginPath();
+        ctx.ellipse(FINISH_X, 392, 125, 24, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#f5d77d";
+        ctx.beginPath();
+        ctx.ellipse(FINISH_X, 387, 116, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#a97525";
+        ctx.font = "bold 15px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("THE MILK CAKE PLATE", FINISH_X, 355);
+        ctx.textAlign = "left";
+        drawPlayer();
+        drawParticles();
+        ctx.restore();
+      }
+
+      function drawLava() {
+        for (const pit of lavaPits) {
+          if (pit.x + pit.w < camera || pit.x > camera + W) continue;
+          const gradient = ctx.createLinearGradient(0, pit.y, 0, H);
+          gradient.addColorStop(0, "#ffcb68");
+          gradient.addColorStop(0.3, "#e6763f");
+          gradient.addColorStop(1, "#9d3e42");
+          ctx.fillStyle = gradient;
+          ctx.fillRect(pit.x, pit.y, pit.w, H - pit.y);
+          ctx.strokeStyle = "#ffe5a0";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          for (let x = 0; x <= pit.w; x += 4) {
+            const y = pit.y + 3 + Math.sin(x / 14 + gameTick / 12) * 2;
+            if (x === 0) ctx.moveTo(pit.x, y);
+            else ctx.lineTo(pit.x + x, y);
+          }
+          ctx.stroke();
+        }
+      }
+
+      function drawSecret() {
+        const treasure = secretRoom === "treasure";
+        ctx.fillStyle = treasure ? "#262336" : "#20152e";
+        ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = "#382444";
+        for (let x = 0; x < W; x += 50) {
+          ctx.strokeRect(x, 0, 50, 355);
+        }
+        ctx.fillStyle = treasure ? "#f8d482" : "#a579cb";
+        ctx.font = "bold 24px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(treasure ? "GOLDEN TREASURE CHAMBER" : "✨ SECRET COFFEE ROOM ✨", 400, 48);
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#48385c";
+        ctx.fillRect(725, 282, 54, 73);
+        ctx.fillStyle = "#acdbce";
+        ctx.fillRect(734, 291, 36, 64);
+        drawPlatforms(treasure ? treasurePlatforms : roomPlatforms);
+        if (treasure) {
+          ctx.fillStyle = "#8c583a";
+          ctx.fillRect(510, 150, 38, 25);
+          ctx.fillStyle = "#e7b958";
+          ctx.fillRect(510, treasureClaimed ? 132 : 143, 38, 9);
+          ctx.fillRect(525, 153, 8, 12);
+          ctx.strokeStyle = "#f4db88";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(510, 150, 38, 25);
+          if (!treasureClaimed) {
+            ctx.font = "24px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("👑", 529, 137);
+            ctx.textAlign = "left";
+          }
+        } else {
+          drawCollectibles("room");
+        }
+        drawPlayer();
+        drawParticles();
+      }
+
+      function drawKitchen() {
+        ctx.fillStyle = "#f4dcc5";
+        ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = "#d5b79e";
+        ctx.lineWidth = 1;
+        for (let x = 0; x < W; x += 50) {
+          for (let y = 0; y < GROUND; y += 50) {
+            ctx.strokeRect(x, y, 50, 50);
+          }
+        }
+        ctx.fillStyle = "#9c6a56";
+        ctx.fillRect(25, 115, 750, 12);
+        ctx.font = "30px sans-serif";
+        for (let i = 0; i < 7; i++) {
+          ctx.fillText(["🥣", "🥛", "🍯"][i % 3], 60 + i * 105, 110);
+        }
+        ctx.fillStyle = "#704c51";
+        ctx.font = "bold 23px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("THE BIRTHDAY KITCHEN", 400, 40);
+        ctx.textAlign = "left";
+        drawPlatforms(finale.platforms);
+
+        ctx.fillStyle = "#996340";
+        ctx.fillRect(54, GROUND - 26, 60, 26);
+        ctx.strokeStyle = "#dbaa68";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(56, GROUND - 24, 56, 22);
+        const batch = cakeBatches[Math.min(finale.delivered, cakeBatches.length - 1)];
+        ctx.font = "20px sans-serif";
+        if (!finale.carrying && finale.delivered < cakeBatches.length) {
+          batch.forEach((id, i) => {
+            ctx.fillText(ingredients[id][0], 51 + i * 19, GROUND - 32);
+          });
+        }
+
+        ctx.fillStyle = "#eee5d9";
+        ctx.beginPath();
+        ctx.ellipse(734, GROUND - 5, 48, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        for (let layer = 0; layer < finale.delivered; layer++) {
+          ctx.fillStyle = layer % 2 ? "#f5d399" : "#c89043";
+          ctx.fillRect(704, GROUND - 16 - layer * 15, 60, 15);
+        }
+
+        for (const hazard of finale.hazards) {
+          if (hazard.warning > 0) {
+            ctx.fillStyle = `rgba(186, 58, 68, ${0.25 + 0.3 * Math.abs(Math.sin(gameTick / 6))})`;
+            ctx.beginPath();
+            ctx.ellipse(hazard.x + hazard.w / 2, GROUND - 3, 22, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillRect(hazard.x + hazard.w / 2 - 1, 145, 2, GROUND - 155);
+            continue;
+          }
+          ctx.fillStyle = "#607483";
+          ctx.fillRect(hazard.x + hazard.w / 2 - 3, hazard.y + 16, 6, 30);
+          if (hazard.type === "fork") {
+            ctx.fillRect(hazard.x, hazard.y + 15, hazard.w, 6);
+            for (let i = 0; i < 3; i++) {
+              ctx.fillRect(hazard.x + i * 6, hazard.y, 4, 20);
+            }
+          } else {
+            ctx.beginPath();
+            ctx.ellipse(hazard.x + 13, hazard.y + 12, 13, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.fillStyle = "#cedde3";
+          ctx.fillRect(hazard.x + hazard.w / 2 - 1, hazard.y + 23, 2, 20);
+        }
+        drawPlayer();
+        if (finale.carrying) {
+          ctx.fillStyle = "#d7a85d";
+          ctx.fillRect(player.x - 6, player.y - 5, player.w + 12, 4);
+          ctx.font = "16px sans-serif";
+          batch.forEach((id, i) => {
+            ctx.fillText(ingredients[id][0], player.x - 8 + i * 15, player.y - 8);
+          });
+        }
+        drawParticles();
+      }
+
+      function drawPoem() {
+        ctx.save();
+        const sky = ctx.createLinearGradient(0, 0, 0, H);
+        sky.addColorStop(0, "#201d3c");
+        sky.addColorStop(1, "#755274");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "#ffe6b4";
+        for (let i = 0; i < 42; i++) {
+          ctx.globalAlpha = 0.4 + Math.sin(gameTick / 35 + i) * 0.25;
+          ctx.fillRect((i * 137 + 19) % W, 12 + (i * 67) % (H - 20), 2, 2);
+        }
+        ctx.globalAlpha = 1;
+        ctx.translate(0, -poem.cameraY);
+        for (const road of poem.roads) {
+          const complete = road.poemIndex < poem.completed;
+          ctx.fillStyle = complete ? "#65516c" : "#3e354e";
+          ctx.fillRect(road.x, road.y, road.w, road.h);
+          ctx.fillStyle = complete ? "#ffe39b" : "#d4b8cb";
+          ctx.fillRect(road.x, road.y, road.w, 2);
+          ctx.font = `${road.fontSize}px sans-serif`;
+          ctx.textAlign = "left";
+          for (const word of road.words) {
+            ctx.fillStyle = word.lit ? "#fff0a8" : "#dbc9e7";
+            ctx.shadowColor = "#ffce71";
+            ctx.shadowBlur = word.lit ? 8 : 0;
+            ctx.fillText(word.text, word.x, road.y + 25);
+          }
+          ctx.shadowBlur = 0;
+        }
+        ctx.fillStyle = "#efc584";
+        ctx.fillRect(16, poem.doorway.y - 46, 57, 46);
+        ctx.fillStyle = "#fff1bd";
+        ctx.fillRect(22, poem.doorway.y - 41, 45, 41);
+        ctx.fillStyle = "#3e354e";
+        ctx.fillRect(poem.doorway.x, poem.doorway.y, poem.doorway.w, poem.doorway.h);
+        ctx.fillStyle = "#73506d";
+        ctx.textAlign = "center";
+        ctx.font = "12px sans-serif";
+        ctx.fillText("Birthday", 44, poem.doorway.y - 23);
+        ctx.fillText("Room", 44, poem.doorway.y - 8);
+        drawPlayer();
+        drawParticles();
+        ctx.restore();
+      }
+
+      function drawCelebration() {
+        ctx.save();
+        const sky = ctx.createLinearGradient(0, 0, 0, H);
+        sky.addColorStop(0, celebration.crown ? "#211d3f" : "#28203f");
+        sky.addColorStop(1, "#755274");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "#fff0bc";
+        for (let i = 0; i < 38; i++) {
+          ctx.globalAlpha = 0.35 + Math.sin(endingTimer / 28 + i) * 0.25;
+          ctx.fillRect((i * 137 + 19) % W, 20 + (i * 67) % 230, 2, 2);
+        }
+        ctx.globalAlpha = 1;
+        for (const spark of celebration.sparks) {
+          ctx.globalAlpha = spark.life / 75;
+          ctx.fillStyle = spark.color;
+          ctx.fillRect(spark.x, spark.y, 3, 3);
+        }
+        ctx.globalAlpha = 1;
+
+        for (const side of [90, 710]) {
+          for (let i = 0; i < 3; i++) {
+            const x = side + (i - 1) * 26;
+            const y = 160 + i * 18 + Math.sin(endingTimer / 35 + i) * 5;
+            ctx.strokeStyle = "#e7d4cb88";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, y + 20);
+            ctx.quadraticCurveTo(x + 12, y + 70, side, 310);
+            ctx.stroke();
+            ctx.fillStyle = celebration.crown ? ["#ffda75", "#e7b553", "#ffedb5"][i]
+              : ["#ef91bb", "#94dfd2", "#b8a2eb"][i];
+            ctx.beginPath();
+            ctx.ellipse(x, y, 17, 22, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff66";
+            ctx.fillRect(x - 7, y - 10, 3, 9);
+          }
+        }
+
+        ctx.fillStyle = "#3e354e";
+        ctx.fillRect(0, 365, W, H - 365);
+        ctx.fillStyle = "#c4a4b7";
+        ctx.fillRect(0, 363, W, 3);
+        ctx.fillStyle = "#e8d5a7";
+        for (let x = 20; x < W; x += 70) {
+          ctx.fillRect(x, 415, 35, 3);
+        }
+        ctx.fillStyle = "#8c6179";
+        ctx.fillRect(285, 340, 230, 12);
+        ctx.fillRect(300, 352, 12, 13);
+        ctx.fillRect(488, 352, 12, 13);
+        ctx.fillStyle = "#f4e3ba";
+        ctx.beginPath();
+        ctx.ellipse(400, 339, 108, 13, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const parking = Math.min(1, endingTimer / 110);
+        drawPlayer({
+          x: -40 + 220 * (1 - (1 - parking) ** 3),
+          y: 365 - player.h, w: player.w, facing: 1,
+        });
+
+        const reveal = Math.max(0, Math.min(1, (endingTimer - 65) / 40));
+        if (reveal > 0) {
+          ctx.save();
+          ctx.globalAlpha = reveal;
+          ctx.translate(0, (1 - reveal) * 25);
+          ctx.fillStyle = "#b16a20";
+          ctx.fillRect(320, 276, 160, 62);
+          ctx.fillStyle = "#d99a40";
+          ctx.fillRect(320, 264, 160, 22);
+          ctx.fillStyle = "#f3ca76";
+          ctx.fillRect(328, 267, 144, 12);
+          ctx.fillStyle = "#a45b19";
+          for (let i = 0; i < 9; i++) {
+            ctx.beginPath();
+            ctx.arc(334 + i * 16, 297 + (i % 2) * 22, 3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          for (let i = 0; i < 3; i++) {
+            const x = 363 + i * 36;
+            ctx.fillStyle = ["#f3a5bb", "#a9e3da", "#b4b1f1"][i];
+            ctx.fillRect(x, 239, 7, 26);
+            ctx.fillStyle = "#fff4d8";
+            ctx.fillRect(x + 2, 241, 2, 22);
+            if (endingTimer >= 145 + i * 15) {
+              const flicker = Math.sin(endingTimer / 4 + i) * 1.5;
+              ctx.fillStyle = "#ffc85e";
+              ctx.beginPath();
+              ctx.ellipse(x + 3.5, 231, 5, 8 + flicker, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "#fff7c0";
+              ctx.beginPath();
+              ctx.ellipse(x + 3.5, 234, 2, 4, 0, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+          ctx.restore();
+        }
+
+        if (celebration.coffee && endingTimer > 110) {
+          ctx.fillStyle = "#f5e1c0";
+          ctx.fillRect(229, 307, 30, 25);
+          ctx.strokeStyle = "#f5e1c0";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(262, 318, 7, -Math.PI / 2, Math.PI / 2);
+          ctx.stroke();
+          ctx.fillStyle = "#603e34";
+          ctx.fillRect(231, 306, 26, 5);
+          ctx.strokeStyle = "#fff1d88c";
+          ctx.lineWidth = 2;
+          for (let i = 0; i < 3; i++) {
+            const rise = (endingTimer + i * 15) % 45;
+            ctx.globalAlpha = 1 - rise / 45;
+            ctx.beginPath();
+            ctx.moveTo(235 + i * 8, 299 - rise);
+            ctx.quadraticCurveTo(243 + i * 8, 291 - rise, 235 + i * 8, 283 - rise);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = "#ffe6b4";
+          ctx.font = "12px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(ingredients[6][2], 244, 352);
+        }
+
+        if (celebration.card && endingTimer > 230) {
+          ctx.fillStyle = "#fff1dc";
+          ctx.fillRect(555, 230, 210, 108);
+          ctx.strokeStyle = "#e3a8b7";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(560, 235, 200, 98);
+          ctx.fillStyle = "#70455f";
+          ctx.textAlign = "center";
+          ctx.font = "bold 15px sans-serif";
+          ctx.fillText("I love you and", 660, 259);
+          ctx.font = "14px sans-serif";
+          ctx.fillText("Happy Birthday,", 660, 285);
+          ctx.fillText("My Chappua!", 660, 306);
+          ctx.font = "18px sans-serif";
+          ctx.fillText("♥", 660, 328);
+        }
+
+        if (celebration.crown && endingTimer > 175) {
+          ctx.textAlign = "center";
+          ctx.font = "30px sans-serif";
+          ctx.fillText("👑", 400, 202);
+        }
+        for (const piece of celebration.confetti) {
+          ctx.save();
+          ctx.translate(piece.x, piece.y);
+          ctx.rotate(piece.angle);
+          ctx.fillStyle = piece.color;
+          ctx.fillRect(-3, -2, 6, 4);
+          ctx.restore();
+        }
+
+        const variant = Number(celebration.coffee)
+          + Number(celebration.card) * 2 + Number(celebration.crown) * 4;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ffe3a2";
+        ctx.font = "bold 22px sans-serif";
+        ctx.fillText(endingTitles[variant], 400, 42);
+        if (endingTimer >= 190) {
+          ctx.globalAlpha = Math.min(1, (endingTimer - 190) / 40);
+          ctx.fillStyle = "#fff2df";
+          ctx.font = "bold 25px sans-serif";
+          ctx.fillText("🎂 Happy Birthday, Chappua! 🎂", 400, 88);
+          ctx.font = "17px sans-serif";
+          ctx.fillText("The very very tasty milk cake is ready. 🥛✨", 400, 120);
+        }
+        ctx.restore();
+      }
+
+      function drawEnding() {
+        for (const puff of smoke) {
+          ctx.globalAlpha = puff.a;
+          ctx.fillStyle = "#777987";
+          ctx.beginPath();
+          ctx.arc(puff.x, puff.y, puff.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        if (endingTimer > 100) {
+          ctx.fillStyle = "#191624";
+          ctx.fillRect(315, 240, 170, 100);
+          ctx.fillStyle = "#08080f";
+          for (let i = 0; i < 8; i++) {
+            ctx.beginPath();
+            ctx.arc(330 + i * 20, 255 + (i % 3) * 20, 17, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        if (endingTimer > 90) {
+          ctx.fillStyle = "#edac49";
+          ctx.fillRect(65, bannerY, 670, 100);
+          ctx.strokeStyle = "#fff1b5";
+          ctx.lineWidth = 4;
+          ctx.strokeRect(65, bannerY, 670, 100);
+          ctx.fillStyle = "#382438";
+          ctx.font = "bold 19px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("Chappua must celebrate without a milk cake.", 400, bannerY + 42);
+          ctx.font = "15px sans-serif";
+          ctx.fillText("🎂 Happy Birthday, Chappua! 🎂", 400, bannerY + 72);
+        }
+        ctx.textAlign = "left";
+      }
+
+      function draw() {
+        if (state === "poem") {
+          drawPoem();
+          return;
+        }
+        if (state === "ending" && cakeReady) {
+          drawCelebration();
+          return;
+        }
+        if (finale) {
+          drawKitchen();
+        } else if (secretRoom) {
+          drawSecret();
+        } else {
+          background();
+          drawWorld();
+        }
+        if (state === "ending") drawEnding();
+        if (state === "dead") {
+          ctx.fillStyle = "#180e22dd";
+          ctx.fillRect(0, 0, W, H);
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#ff7474";
+          ctx.font = "bold 37px sans-serif";
+          ctx.fillText("GAME OVER!", 400, 190);
+          ctx.fillStyle = "white";
+          ctx.font = "20px sans-serif";
+          ctx.fillText("Accident ho gaya rabba rabba!", 400, 235);
+          ctx.textAlign = "left";
+        }
+      }
+
+      function loop(time) {
+        if (lastTime === null) lastTime = time;
+        // Fixed physics ticks keep jumps and collisions consistent at any refresh rate.
+        accumulator += Math.min(time - lastTime, 100);
+        lastTime = time;
+        while (accumulator >= STEP_MS) {
+          update();
+          accumulator -= STEP_MS;
+        }
+        draw();
+        updateUI();
+        requestAnimationFrame(loop);
+      }
+
+      document.addEventListener("keydown", (event) => {
+        const key = event.key.toLowerCase();
+        keys.add(key);
+        if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
+          event.preventDefault();
+        }
+        if (event.repeat) return;
+        if ([" ", "arrowup", "w"].includes(key)) jump();
+        if (["arrowdown", "s"].includes(key)) enterSecret();
+        if (key === "r" && (state === "dead" || state === "ending")) makeLevel();
+      });
+      document.addEventListener("keyup", (event) => keys.delete(event.key.toLowerCase()));
+      window.addEventListener("blur", () => keys.clear());
+      document.addEventListener("visibilitychange", () => {
+        keys.clear();
+        lastTime = null;
+        accumulator = 0;
+      });
+
+      makeLevel();
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>
